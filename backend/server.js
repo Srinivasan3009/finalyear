@@ -5,6 +5,7 @@ const app=express();
 const mongoose=require("mongoose");
 app.use(express.json());
 app.use(cors());
+const chatRoutes = require("./routes/chatRoutes");
 
 const MONGO_URI=process.env.MONGO_URI;
 const PORT=process.env.port|| 5000;
@@ -16,5 +17,5 @@ mongoose.connect(MONGO_URI,{}).then(()=>{
 });
 
 app.use("/users", require("./routes/userRoutes"));
-
+app.use("/chat", chatRoutes);
 })

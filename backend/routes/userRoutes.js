@@ -45,5 +45,26 @@ router.post("/login", async (req, res) => {
   }
 });
 
+router.get("/profile/:userId", async (req, res) => {
+  try {
+    const user = await User.findById(req.params.userId)
+      .select("-password");
+
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ message: "Profile fetch failed" });
+  }
+});
+router.get("/profile/:email", async (req, res) => {
+  try {
+    const user = await User.findOne(req.params.email)
+      .select("-password");
+
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ message: "Profile fetch failed" });
+  }
+});
+
 
 module.exports= router;
