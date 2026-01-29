@@ -19,11 +19,9 @@ const Login =()=>{
         e.preventDefault();
         try{
             const res=await axios.post("http://localhost:5000/users/login",formData);
-             console.log("Axios success:", res);
-            localStorage.setItem("email",formData.email);
-            alert(res.data?.message || "Login success");
-
-            navigate("/chat");
+             navigate("/chat");
+            localStorage.setItem("username", res.user.username);
+            localStorage.setItem("id",res.user.id);
 
         } catch (err) {
             console.log("Caught error:", err);

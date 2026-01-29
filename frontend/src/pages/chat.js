@@ -1,281 +1,274 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import axios from "axios";
 
 const Chat = () => {
-  const [user, setUser] = useState(null);
   const [chats, setChats] = useState([]);
-  const [activeChatId, setActiveChatId] = useState(null);
-  const [input, setInput] = useState("");
-  const [showProfile, setShowProfile] = useState(false);
+  const [messages, setMessages] = useState([]);
+
+  const [currentChatId, setCurrentChatId] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [messageInput, setMessageInput] = useState("");
 
   const messagesEndRef = useRef(null);
-  const email = localStorage.getItem("email");
-console.log(email);
-  const activeChat = chats.find(chat => chat._id === activeChatId);
-  const userId =null;
- axios.get(`http://localhost:5000/users/profile/${email}`).then(res=> userId=res.data).catch(console.error);
-  // 🔹 Load profile + chats
-  useEffect(() => {
-    if (!email) return;
+const currentChat = chats.find((c) => c._id === currentChatId);
 
-    axios
-      .get(`http://localhost:5000/users/profile/${userId}`)
-      .then(res => setUser(res.data))
-      .catch(console.error);
+  // Get userId and username from a global object or context
+  const userId =localStorage.getItem("id"); // set this after login
+  const username = localStorage.getItem("username") || "Guest";
 
-    axios
-      .get(`http://localhost:5000/chat/user/${userId}`)
-      .then(res => {
-        setChats(res.data);
-        if (res.data.length) setActiveChatId(res.data[0]._id);
-      })
-      .catch(console.error);
-  }, [email, userId]);
-
-  // 🔹 Auto scroll
+  // Scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [activeChat?.messages]);
+  }, [currentChatId, chats]);
 
-  // 🔹 Send message
+  // Load all chats for user
+ const loadChats = useCallback(async () => {
+  if (!userId) return;
+
+  try {
+    const res = await axios.get(`http://localhost:5000/chat/user/${userId}`);
+    setChats(res.data);
+
+    // If no chat selected, auto select first
+    if (res.data.length && !currentChatId) {
+      setCurrentChatId(res.data[0]._id);
+    }
+  } catch (err) {
+    console.error("Error loading chats:", err);
+  }
+}, [userId, currentChatId]);
+
+
+ useEffect(() => {
+  loadChats();
+}, [loadChats]);
+
+
+
+  // Current chat
+  useEffect(() => {
+  if (!currentChatId) {
+    setMessages([]);
+    return;
+  }
+
+  const chat = chats.find((c) => c._id === currentChatId);
+  if (chat) setMessages(chat.messages || []);
+}, [currentChatId, chats]);
+
+
+  // Send a message
   const sendMessage = async () => {
-    if (!input.trim() || !activeChatId) return;
+  if (!messageInput.trim() || !currentChatId) return;
 
+  const newMsg = {
+    sender: "user",
+    text: messageInput.trim(),
+  };
+
+  // Show instantly in UI
+  setMessages((prev) => [...prev, newMsg]);
+  setMessageInput("");
+  setLoading(true);
+
+  try {
     await axios.post("http://localhost:5000/chat/message", {
-      chatId: activeChatId,
+      chatId: currentChatId,
       sender: "user",
-      text: input
+      text: newMsg.text,
     });
 
-    const res = await axios.get(
-      `http://localhost:5000/chat/user/${userId}`
-    );
-    setChats(res.data);
-    setInput("");
+    // Reload chats to sync with DB
+    await loadChats();
+  } catch (err) {
+    console.error("Send message error:", err);
+  }
+
+  setLoading(false);
+};
+
+
+  // Create new chat
+  const createNewChat = async () => {
+    try {
+      const res = await axios.post("http://localhost:5000/chat/new", { userId });
+      setChats([res.data, ...chats]);
+      setCurrentChatId(res.data._id);
+    } catch (err) {
+      console.error("New chat error:", err);
+    }
   };
 
-  // 🔹 New chat
-  const newChat = async () => {
-    const res = await axios.post(
-      "http://localhost:5000/chat/new",
-      { userId }
-    );
-
-    setChats([res.data, ...chats]);
-    setActiveChatId(res.data._id);
-  };
-
-  // 🔹 Delete chat
+  // Delete chat
   const deleteChat = async (chatId) => {
-    await axios.delete(`http://localhost:5000/chat/${chatId}`);
-    setChats(chats.filter(c => c._id !== chatId));
-    setActiveChatId(null);
+    try {
+      await axios.delete(`http://localhost:5000/chat/${chatId}`);
+      const updatedChats = chats.filter((c) => c._id !== chatId);
+      setChats(updatedChats);
+      if (chatId === currentChatId) {
+        setCurrentChatId(updatedChats.length ? updatedChats[0]._id : null);
+      }
+    } catch (err) {
+      console.error("Delete chat error:", err);
+    }
   };
 
-  // 🔹 Logout
+  // Logout
   const logout = () => {
-    localStorage.clear();
+    window.AppUser = null; // clear global
     window.location.href = "/";
   };
 
   return (
-    <div style={styles.container}>
-      {/* LEFT SIDEBAR */}
-      <div style={styles.sidebar}>
-        <button style={styles.newChatBtn} onClick={newChat}>
-          + New Chat
-        </button>
+  <div className="container-fluid vh-100">
+    <div className="row h-100">
 
-        {chats.map(chat => (
-          <div
-            key={chat._id}
-            style={{
-              ...styles.chatItem,
-              background:
-                chat._id === activeChatId ? "#2a2b32" : "transparent"
-            }}
-            onClick={() => setActiveChatId(chat._id)}
-          >
-            <span>{chat.title}</span>
-           <button
-  style={styles.deleteBtn}
-  onClick={(e) => {
-    e.stopPropagation();
-    deleteChat(chat._id);
-  }}
->
-  🗑
-</button>
-
-          </div>
-        ))}
-      </div>
-
-      {/* RIGHT CHAT AREA */}
-      <div style={styles.chatArea}>
-        {/* TOP BAR */}
-        <div style={styles.topBar}>
-          <div>Chat App</div>
-
-          <div style={{ position: "relative" }}>
+      {/* Sidebar */}
+      {sidebarOpen && (
+        <div className="col-3 bg-dark text-white d-flex flex-column p-0">
+          <div className="p-3 border-bottom border-secondary">
             <button
-              style={styles.profileBtn}
-              onClick={() => setShowProfile(!showProfile)}
+              onClick={createNewChat}
+              className="btn btn-secondary w-100"
             >
-              👤
+              + New Chat
             </button>
+          </div>
 
-            {showProfile && (
-              <div style={styles.dropdown}>
-                <p>{user?.username || "User"}</p>
-                <button onClick={logout}>Logout</button>
+          <div className="flex-grow-1 overflow-auto p-2">
+            {chats.length === 0 ? (
+              <div className="text-secondary text-center mt-4">
+                No chats yet. Start a new conversation!
               </div>
+            ) : (
+              <ul className="list-group list-group-flush">
+                {chats.map((chat) => (
+                  <li
+                    key={chat._id}
+                    className={`list-group-item list-group-item-action d-flex justify-content-between align-items-center ${
+                      currentChatId === chat._id ? "active" : ""
+                    }`}
+                    style={{ cursor: "pointer" }}
+                    onClick={() => setCurrentChatId(chat._id)}
+                  >
+                    <span className="text-truncate">{chat.title || "Chat"}</span>
+                    <button
+                      className="btn btn-sm btn-outline-danger"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteChat(chat._id);
+                      }}
+                    >
+                      🗑️
+                    </button>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
         </div>
+      )}
 
-        {/* MESSAGES */}
-        <div style={styles.messages}>
-          {activeChat?.messages?.map((msg, index) => (
-            <div
-              key={index}
-              style={{
-                ...styles.message,
-                alignSelf:
-                  msg.sender === "user" ? "flex-end" : "flex-start",
-                background:
-                  msg.sender === "user" ? "#DCF8C6" : "#F1F1F1"
-              }}
-            >
-              {msg.text}
-            </div>
-          ))}
-          <div ref={messagesEndRef} />
-        </div>
+      {/* Chat Area */}
+      <div className="col d-flex flex-column p-0">
 
-        {/* INPUT */}
-        <div style={styles.inputArea}>
-          <input
-            type="text"
-            placeholder="Send a message..."
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-            style={styles.input}
-          />
-          <button onClick={sendMessage} style={styles.button}>
-            Send
+        {/* Header */}
+        <div className="bg-white border-bottom p-3 d-flex justify-content-between align-items-center">
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="btn btn-outline-secondary d-lg-none"
+          >
+            ☰
           </button>
+
+          <h5 className="mb-0">{currentChat?.title || "New Chat"}</h5>
+
+          <div className="dropdown">
+            <button
+              className="btn btn-light d-flex align-items-center gap-2"
+              data-bs-toggle="dropdown"
+            >
+              <div
+                className="rounded-circle bg-primary text-white d-flex justify-content-center align-items-center"
+                style={{ width: "40px", height: "40px" }}
+              >
+                {username.slice(0, 2).toUpperCase()}
+              </div>
+            </button>
+
+            <ul className="dropdown-menu dropdown-menu-end shadow">
+              <li className="px-3 py-1 fw-bold">{username}</li>
+              <li>
+                <button className="dropdown-item text-danger" onClick={logout}>
+                  Logout
+                </button>
+              </li>
+            </ul>
+          </div>
         </div>
+
+        {/* Messages */}
+        <div
+    className="flex-grow-1 overflow-auto p-3 bg-light"
+    style={{ minHeight: 0 }}
+  >
+    {messages.length === 0 ? (
+      <div className="text-muted text-center mt-4">
+        No messages yet. Start chatting!
       </div>
+    ) : (
+      messages.map((msg, idx) => (
+        <div
+          key={idx}
+          className={`d-flex mb-2 ${
+            msg.sender === "user" ? "justify-content-end" : "justify-content-start"
+          }`}
+        >
+          <div
+            className={`p-2 rounded ${
+              msg.sender === "user"
+                ? "bg-primary text-white"
+                : "bg-white border"
+            }`}
+            style={{ maxWidth: "60%" }}
+          >
+            {msg.text}
+          </div>
+        </div>
+      ))
+    )}
+    <div ref={messagesEndRef} />
+  </div>
+
+  {/* Input Section */}
+  <div className="border-top bg-white p-3 flex-shrink-0">
+    <div className="d-flex align-items-end gap-2">
+      <textarea
+        value={messageInput}
+        onChange={(e) => setMessageInput(e.target.value)}
+        placeholder="Type your message..."
+        className="form-control chat-textarea"
+        rows={1}
+        onKeyDown={(e) =>
+          e.key === "Enter" && !e.shiftKey && (e.preventDefault(), sendMessage())
+        }
+      />
+      <button
+        onClick={sendMessage}
+        disabled={!messageInput.trim() || loading}
+        className="btn btn-primary px-4"
+        style={{ height: "42px" }}
+      >
+        Send
+      </button>
     </div>
-  );
-};
+  </div>
 
-const styles = {
-  container: {
-    display: "flex",
-    height: "100vh",
-    background: "#ffffff"
-  },
 
-  /* SIDEBAR */
-  sidebar: {
-    width: "260px",
-    background: "#202123",
-    color: "#fff",
-    padding: "10px",
-    display: "flex",
-    flexDirection: "column"
-  },
-  newChatBtn: {
-    padding: "10px",
-    marginBottom: "10px",
-    background: "#10a37f",
-    border: "none",
-    color: "#fff",
-    cursor: "pointer",
-    borderRadius: "5px"
-  },
-  chatItem: {
-    padding: "10px",
-    cursor: "pointer",
-    borderRadius: "5px",
-    marginBottom: "5px"
-  },
-
-  /* CHAT AREA */
-  chatArea: {
-    flex: 1,
-    display: "flex",
-    flexDirection: "column"
-  },
-  header: {
-    padding: "15px",
-    borderBottom: "1px solid #ddd",
-    textAlign: "center",
-    fontWeight: "bold"
-  },
-  messages: {
-    flex: 1,
-    padding: "20px",
-    display: "flex",
-    flexDirection: "column",
-    overflowY: "auto"
-  },
-  message: {
-    padding: "12px 15px",
-    borderRadius: "10px",
-    maxWidth: "70%",
-    marginBottom: "10px"
-  },
-
-  /* INPUT */
-  inputArea: {
-    display: "flex",
-    padding: "15px",
-    borderTop: "1px solid #ddd"
-  },
-  input: {
-    flex: 1,
-    padding: "12px",
-    fontSize: "16px",
-    borderRadius: "6px",
-    border: "1px solid #ccc"
-  },
-  button: {
-    marginLeft: "10px",
-    padding: "12px 20px",
-    background: "#10a37f",
-    color: "#fff",
-    border: "none",
-    borderRadius: "6px",
-    cursor: "pointer"
-  },
-  deleteBtn: {
-  background: "transparent",
-  border: "none",
-  color: "#888",
-  cursor: "pointer",
-  fontSize: "14px",
-  marginLeft: "8px"
-},
-  topBar: {
-  height: "50px",
-  backgroundColor: "#202123",
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  padding: "0 15px",
-  color: "white"
-},
-profileBtn: {
-  background: "transparent",
-  border: "none",
-  fontSize: "20px",
-  cursor: "pointer",
-  color: "white"
-}
+      </div>
+    </div></div>
+);
 
 };
 

@@ -35,4 +35,14 @@
   to {
     transform: rotate(360deg);
   }
+  
+}
+.chat-textarea {
+  resize: none;
+  min-height: 42px;
+  max-height: 120px;
+  overflow-y: auto;
+  border-radius: 20px;
+  padding: 10px 15px;
+  line-height: 1.4;
 }
